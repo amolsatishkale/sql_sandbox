@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: sql_problems_db
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      # Mount the initialization script
+      - ./docker-init:/docker-entrypoint-initdb.d
+      # Persist database data
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - sql_problems_network
+
+  spark-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark_jupyter_notebook
+    ports:
+      - "4040:4040"  # Spark UI
+      - "8888:8888"  # Jupyter Lab
+      - "7077:7077"  # Spark Master
+    volumes:
+      - ./sql_problems:/workspace/sql_problems
+    depends_on:
+      - postgres
+    networks:
+      - sql_problems_network
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    working_dir: /workspace
+    command: bash -c "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/workspace"
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  sql_problems_network:
+    driver: bridge

@@ -1,0 +1,78 @@
+# Use official Apache Spark image as base
+FROM apache/spark:3.5.0-scala2.12-java11-python3-ubuntu
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONPATH=$SPARK_HOME/python:$SPARK_HOME/python/lib/py4j-*-src.zip
+
+# Switch to root user for installations
+USER root
+
+# Install system dependencies and Python packages
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    procps \
+    net-tools \
+    vim \
+    git \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages using pip
+RUN pip3 install --no-cache-dir \
+    pyspark==3.5.0 \
+    jupyter \
+    jupyterlab \
+    notebook \
+    ipykernel \
+    pandas \
+    numpy \
+    pyarrow \
+    matplotlib \
+    seaborn \
+    plotly \
+    requests \
+    python-dotenv \
+    tabulate \
+    fastparquet \
+    psycopg2-binary \
+    sqlalchemy
+
+# Download PostgreSQL JDBC driver with certificate handling
+RUN curl -L -k -o /opt/spark/jars/postgresql-42.7.0.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.0/postgresql-42.7.0.jar || \
+    wget --no-check-certificate -O /opt/spark/jars/postgresql-42.7.0.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.0/postgresql-42.7.0.jar || \
+    echo "Failed to download PostgreSQL JDBC driver, continuing without it..."
+
+# Create spark user if it doesn't exist and setup directories
+RUN if ! id -u spark > /dev/null 2>&1; then \
+        useradd -m -s /bin/bash spark && \
+        echo "spark ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers; \
+    fi && \
+    mkdir -p /workspace /home/spark && \
+    chown -R spark:spark /opt/spark /workspace /home/spark
+
+# Set the default Python interpreter
+ENV PATH=/usr/bin:$PATH
+
+# Create Spark configuration for PostgreSQL
+RUN mkdir -p /opt/spark/conf && \
+    echo "spark.sql.adaptive.enabled=true" > /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.sql.adaptive.coalescePartitions.enabled=true" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.driver.extraClassPath=/opt/spark/jars/postgresql-42.7.0.jar" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.executor.extraClassPath=/opt/spark/jars/postgresql-42.7.0.jar" >> /opt/spark/conf/spark-defaults.conf && \
+    chown -R spark:spark /opt/spark/conf
+
+# Set permissions for workspace files that will be mounted
+RUN mkdir -p /workspace && \
+    chown -R spark:spark /workspace
+
+# Switch to spark user and set working directory
+USER spark
+WORKDIR /workspace
+
+# Expose ports
+EXPOSE 4040 8080 8888 7077
+
+# Default command
+CMD ["/bin/bash"]
