@@ -1,0 +1,15 @@
+WITH ranked AS (
+    SELECT
+        user_id_sender,
+        action,
+        LEAD(action) OVER (PARTITION BY user_id_sender ORDER BY user_id_sender) AS next_action
+    FROM fb_friend_requests
+),
+agg AS (
+    SELECT
+        SUM(CASE WHEN action = 'sent' AND next_action = 'accepted' THEN 1 ELSE 0 END) AS sent_accepted_count,
+        COUNT(DISTINCT user_id_sender) AS distinct_users
+    FROM ranked
+)
+SELECT ROUND((sent_accepted_count::decimal / distinct_users::decimal) * 100, 2) AS acceptance_rate
+FROM agg;
